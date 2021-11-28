@@ -618,7 +618,7 @@ int deepth = 0; //层数
 Value *NIdentifier::codegen() {
   // begin
   
-  std::string name_depth = name + std::to_string(deepth);
+  std::string name_depth = name ;
   
   if(mp[name_depth] != 0) {
       return builder->CreateLoad(mp[name_depth]->getAllocatedType(),mp[name_depth]);
@@ -796,16 +796,11 @@ Value *NAssignment::codegen() {
     exit(0);
   } else {
 
-    if(mp[lhs.name + std::to_string(deepth)] != nullptr)
-      return builder->CreateStore(rv,mp[lhs.name + std::to_string(deepth)]);
-    else if(curNamedValues[lhs.name + std::to_string(deepth)] != nullptr){
-      return builder->CreateStore(rv,curNamedValues[lhs.name + std::to_string(deepth)]);
-    } else if(mp[lhs.name + std::to_string(1)] != nullptr) {
-      return builder->CreateStore(rv,mp[lhs.name + std::to_string(deepth)]);
-    } else if{
-      return builder->CreateStore(rv,mp[lhs.name + std::to_string(deepth)]);
-    }
-
+    if(mp[lhs.name ] != nullptr)
+      return builder->CreateStore(rv,mp[lhs.name ]);
+    else if(curNamedValues[lhs.name ] != nullptr){
+      return builder->CreateStore(rv,curNamedValues[lhs.name ]);
+    } 
   }
   return nullptr;
   // rhs.
@@ -936,20 +931,20 @@ Value *NDef::codegen() {
       NDecList *d = nDecList;
       for(;d != nullptr;d = d->nDecList) {
           
-          if(mp[d->dec.vardec.Id.name + std::to_string(deepth)] != nullptr) {
-              printSemanticError(3,line);
-              exit(0);
-          }
+          // if(mp[d->dec.vardec.Id.name ] != nullptr) {
+          //     printSemanticError(3,line);
+          //     exit(0);
+          // }
           
           // 但是还要赋值怎么办  ？
-          AllocaInst *alloca_tmp = builder->CreateAlloca(s,nullptr,d->dec.vardec.Id.name + std::to_string(deepth));
+          AllocaInst *alloca_tmp = builder->CreateAlloca(s,nullptr,d->dec.vardec.Id.name );
 
           if(d->dec.exp != nullptr) {
               Value *v = d->dec.exp->codegen();
               builder->CreateStore(v,alloca_tmp);
           } 
 
-          mp[d->dec.vardec.Id.name + std::to_string(deepth)] = alloca_tmp; //创建的变量 保存起来
+          mp[d->dec.vardec.Id.name ] = alloca_tmp; //创建的变量 保存起来
 
           #ifdef debug
           std::cout<<"line: "<<__LINE__<<" file: "<<__FUNCTION__<<std::endl;
@@ -993,10 +988,16 @@ Value *NStmtList::codegen() {
 
 
 
+// std::unordered_set<std::string>st; //当前
+
 Value *NCompSt::codegen() {
   // 自行处理变量作用域的问题
   deepth++;
-
+  
+  std::map<std::string,AllocaInst*> back_mp;
+  back_mp = mp;
+  
+  
   #ifdef debug
   std::cout<<"line: "<<__LINE__<<" file: "<<__FUNCTION__<<std::endl;
   #endif
@@ -1013,6 +1014,8 @@ Value *NCompSt::codegen() {
     retVal = nstmtlist->codegen();
   
   deepth--;
+
+  mp = back_mp;
   return retVal;
 
 }
