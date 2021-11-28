@@ -21,6 +21,7 @@ using namespace llvm;
 std::unique_ptr<LLVMContext> theContext;
 std::unique_ptr<Module> theModule;
 std::unique_ptr<IRBuilder<>> builder;
+//有什么区别呢
 std::map<std::string, AllocaInst *> namedValues;
 std::unique_ptr<legacy::FunctionPassManager> theFPM;
 

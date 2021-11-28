@@ -611,13 +611,21 @@ Value *NChar::codegen() {
 }
 
 
-std::map<Value*,AllocaInst*>mp;
+std::map<std::string,AllocaInst*>mp;
 
 //不确定
 Value *NIdentifier::codegen() {
   // begin
-  //后悔了 不如直接用string
-  return ConstantDataArray::getString(*theContext,name,true);
+  if(mp[name] != 0) {
+      return builder->CreateLoad(mp[name]->getAllocatedType(),mp[name]);
+  } else if(namedValues[name] != 0) {
+    return builder->CreateLoad(namedValues[name]->getAllocatedType(),namedValues[name]);
+  }
+  else {
+    printSemanticError(1,line);
+    exit(0);
+  }
+  // return ConstantDataArray::getString(*theContext,name,true);
   // end
 }
 
@@ -637,17 +645,26 @@ Value *NMethodCall::codegen() {
   std::vector<Value *> argsV;
   //参数怎么放，如何得到alloc分配的信息，如何从exp中 获得信息
   NArgs *arg = nargs;
-  
-   for(auto &Farg : calleeF->args()) {
+    
+    for(auto &Farg : calleeF->args()) {
+      if(arg == nullptr) {
+        printSemanticError(8,line);
+        exit(0);
+      }
       Type *t = Farg.getType();
-      if (t != arg->codegen())
+      Value *v = arg->codegen();
+      if (t != v->getType()) {
+        printSemanticError(8,line);
+        exit(0);
+      }
+      argsV.push_back(v);
+      arg = arg->nArgs;      
    }
 
-  for(;arg != nullptr;arg = arg->nArgs) {
-      Value *v = arg->codegen();
-      v->getType()
-      argsV.push_back(v);
-  }
+   if(arg != nullptr) {
+        printSemanticError(8,line);
+        exit(0);
+   } 
 
   Value *retval = builder->CreateCall(calleeF,argsV);
   return retval;
@@ -661,19 +678,19 @@ Value *NParenOperator::codegen() { return exp.codegen(); }
 // Id 是不是也要变化
 Value *NSingleOperator::codegen() {
   // begin
-  Value * v = hs.codegen();
-  Value *vv;
-  if(hs.name != "") {  //Id
-    if(mp[v] == nullptr) {
-      printSemanticError(1,line);
-      exit(0);
-    }
-    else {
-        vv = builder->CreateLoad(mp[v]->getAllocatedType(),mp[v]);
-    }
-  } else {
-      vv = v;
-  }
+  Value * vv = hs.codegen();
+  // Value *vv;
+  // if(hs.name != "") {  //Id
+  //   if(mp[v] == nullptr) {
+  //     printSemanticError(1,line);
+  //     exit(0);
+  //   }
+  //   else {
+  //       vv = builder->CreateLoad(mp[v]->getAllocatedType(),mp[v]);
+  //   }
+  // } else {
+  //     vv = v;
+  // }
 
   switch (op)
   {
@@ -693,39 +710,57 @@ Value *NSingleOperator::codegen() {
 Value *NBinaryOperator::codegen() {
   // begin
   //如果不是标志符怎么办？怎么去处理
-  Value *lid,*rid,*l,*r;
-  lid = lhs.codegen();
-  rid = rhs.codegen();
-  if(lhs.name != "") {
-      if(mp[lid] == nullptr) {
-        printSemanticError(1,line);
-        exit(0);
-      } else {
-        l = builder->CreateLoad(mp[lid]->getAllocatedType(),mp[lid]);
-      }
-  } else {
-    l = lid;
-  }
+  // Value *lid,*rid,*l,*r;
+  // lid = lhs.codegen();
+  // rid = rhs.codegen();
+  // if(lhs.name != "") {
+  //     if(mp[lid] == nullptr) {
+  //       printSemanticError(1,line);
+  //       exit(0);
+  //     } else {
+  //       l = builder->CreateLoad(mp[lid]->getAllocatedType(),mp[lid]);
+  //     }
+  // } else {
+  //   l = lid;
+  // }
 
-  if(rhs.name != "") {
-      if(mp[rid] == nullptr) {
-        printSemanticError(1,line);
-        exit(0);
-      } else {
-        r = builder->CreateLoad(mp[rid]->getAllocatedType(),mp[rid]);
-      }
-  } else {
-    r = rid;
-  }
-
+  // if(rhs.name != "") {
+  //     if(mp[rid] == nullptr) {
+  //       printSemanticError(1,line);
+  //       exit(0);
+  //     } else {
+  //       r = builder->CreateLoad(mp[rid]->getAllocatedType(),mp[rid]);
+  //     }
+  // } else {
+  //   r = rid;
+  // }
+  Value *l,*r;
+  l = lhs.codegen();
+  r = rhs.codegen();
+  // printf("op:%d\n",op);
+  // std::cout<<"name:"<<name<<std::endl;
+  std::string relop;
+  if(op == 260)
+    relop = name.substr(5,2);
   switch (op)
   {
-  // case 279:
-
-  //   break;
-  case 280:
+  case 260:     
+    if(relop == "<=") {
+        return builder->CreateICmpULE(l,r);
+    } else if(relop == "==") {
+        return builder->CreateICmpEQ(l,r);
+    } else if(relop == "!=") {
+        return builder->CreateICmpNE(l,r);
+    } else if(relop == ">") { 
+        return builder->CreateICmpSGT(l,r);
+    } else if(relop == "<") {
+        return builder->CreateICmpSLT(l,r);
+    } else if(relop == ">=") {
+        return builder->CreateICmpSGE(l,r);
+    }
+  case 280:  //
       return builder->CreateAnd(l,r);
-  case 281:
+  case 281:  //
       return builder->CreateOr(l,r);
   case 274:
       return builder->CreateAdd(l,r);
@@ -734,7 +769,7 @@ Value *NBinaryOperator::codegen() {
   case 276:
       return builder->CreateMul(l,r);
   case 277:
-      return builder->CreateFDiv(l,r);
+      return builder->CreateSDiv(l,r);
   default:
     break;
   }
@@ -747,31 +782,41 @@ Value *NAssignment::codegen() {
   // Assignment requires the LHS to be an identifier.
   // begin
   Value* lv,*rv;
-  AllocaInst * a;
-
-  lv = lhs.codegen();
+  lv = lhs.codegen(); //起始多了一个指令
   rv = rhs.codegen();
-  // rhs.
-  if(mp[lv] != nullptr)
-  {
-    if(rv->getType() != mp[lv]->getAllocatedType()) {
-      printSemanticError(5,line);
-      exit(0);
-    } 
-    builder->CreateStore(rv,mp[lv]);
-  }  
-  else 
-  {
-    if(lhs.name != "") {
-      printSemanticError(1,line);
-      exit(0);
-    } else {
-      printSemanticError(6,line);
-      exit(0);
+  if (lhs.name == "") {
+    printSemanticError(6,line);
+    exit(0);
+  } else if(lv->getType() != rv->getType()) {
+    printSemanticError(5,line);
+    exit(0);
+  } else {
+    if(mp[lhs.name] != nullptr)
+      return builder->CreateStore(rv,mp[lhs.name]);
+    else if(curNamedValues[lhs.name] != nullptr){
+      return builder->CreateStore(rv,curNamedValues[lhs.name]);
     }
   }
-
   return nullptr;
+  // rhs.
+  // if(mp[lv] != nullptr)
+  // {
+  //   if(rv->getType() != mp[lv]->getAllocatedType()) {
+  //     printSemanticError(5,line);
+  //     exit(0);
+  //   } 
+  //   builder->CreateStore(rv,mp[lv]);
+  // }  
+  // else 
+  // {
+  //   if(lhs.name != "") {
+  //     printSemanticError(1,line);
+  //     exit(0);
+  //   } else {
+  //     printSemanticError(6,line);
+  //     exit(0);
+  //   }
+  // }
   // end
 }
 
@@ -799,7 +844,7 @@ Type *NSpecifier::getType() {
 Value *NVarDec::codegen() {
   // begin
   // builder->
-  return Id.codegen();
+  // return Id.codegen();
   //不支持数组 目前
   // end
 }
@@ -880,20 +925,26 @@ Value *NDef::codegen() {
   if(nDecList != nullptr) {
       NDecList *d = nDecList;
       for(;d != nullptr;d = d->nDecList) {
-          if(mp[d->dec.vardec.codegen()] != nullptr) {
+          
+          if(mp[d->dec.vardec.Id.name] != nullptr) {
               printSemanticError(3,line);
               exit(0);
           }
+          
           // 但是还要赋值怎么办  ？
           AllocaInst *alloca_tmp = builder->CreateAlloca(s,nullptr,d->dec.vardec.Id.name);
+
           if(d->dec.exp != nullptr) {
               Value *v = d->dec.exp->codegen();
               builder->CreateStore(v,alloca_tmp);
           } 
-          mp[d->dec.vardec.codegen()] = alloca_tmp; //创建的变量 保存起来
+
+          mp[d->dec.vardec.Id.name] = alloca_tmp; //创建的变量 保存起来
+
           #ifdef debug
           std::cout<<"line: "<<__LINE__<<" file: "<<__FUNCTION__<<std::endl;
           #endif
+
       } 
       
   } 
@@ -950,12 +1001,16 @@ Value *NCompSt::codegen() {
 }
 
 
-Value *NExpStmt::codegen() { return exp.codegen(); }
+Value *NExpStmt::codegen() 
+{ 
+  exp.codegen(); 
+  return nullptr;  
+}
 
 Value *NCompStStmt::codegen() {
   // begin
-
-  return  compst.codegen();
+  compst.codegen();
+  return  nullptr;
   // end
 }
 
@@ -965,48 +1020,117 @@ Value *NRetutnStmt::codegen() {
   Function *theFun = builder->GetInsertBlock()->getParent();
   
   BasicBlock *bb = BasicBlock::Create(*theContext, "ret", theFun);
-  
+  //还是在上一个块的插入点
   builder->CreateBr(bb);
   
   builder->SetInsertPoint(bb);
   
   Value *retVal = exp.codegen();
 
-  Value *v = builder->CreateLoad(mp[retVal]->getAllocatedType(),mp[retVal]);
+  // Value *v = builder->CreateLoad(mp[retVal]->getAllocatedType(),mp[retVal]);
   
   // check the return type and fundec type
   // begin
   Type *t = theFun->getReturnType();
   
-  
+  if(t != retVal->getType()) {
+    printSemanticError(7,line);
+    exit(0);
+  }
   // end
-  builder->CreateRet(v);
-  return v;
+  builder->CreateRet(retVal);
+  return retVal;
 }
 
+/*
+if() {
 
+} else {
+
+}
+ 
+*/
+
+//返回的值到底是什么
 Value *NIfStmt::codegen() {
   Function *theFun = builder->GetInsertBlock()->getParent();
   // begin
+  //创建条件为真和假应跳转的两个基本块
 
+  BasicBlock *thenb = BasicBlock::Create(*theContext,"ifthen",theFun); 
+  BasicBlock *ifnotb = BasicBlock::Create(*theContext,"ifnot"); 
+  builder->CreateCondBr(exp.codegen(),thenb,ifnotb);
+
+  builder->SetInsertPoint(thenb);
+  if(stmt.codegen() == nullptr) {
+    builder->CreateBr(ifnotb);
+  }
+  
+  //跳转
+
+  //插入之前
+  theFun->getBasicBlockList().push_back(ifnotb);
+  builder->SetInsertPoint(ifnotb);
+  
   return nullptr;
   // end
 }
+
+
 Value *NIfElseStmt::codegen() {
   Function *theFun = builder->GetInsertBlock()->getParent();
   // begin
+  BasicBlock *thenb = BasicBlock::Create(*theContext, "ifthen", theFun); 
+  BasicBlock *ifnotb = BasicBlock::Create(*theContext,"ifnot"); 
+  BasicBlock *after = BasicBlock::Create(*theContext,"ifafter"); 
+  builder->CreateCondBr(exp.codegen(),thenb,ifnotb);
 
+  builder->SetInsertPoint(thenb);
+  stmt.codegen();
+  builder->CreateBr(after);
+
+  //插入之前
+  theFun->getBasicBlockList().push_back(ifnotb);
+  builder->SetInsertPoint(ifnotb);
+  stmt_else.codegen();
+  builder->CreateBr(after);
+
+  //after
+  theFun->getBasicBlockList().push_back(after);
+  builder->SetInsertPoint(after);
   return nullptr;
   // end
 }
+
+
 Value *NWhileStmt::codegen() {
   Function *theFun = builder->GetInsertBlock()->getParent();
-  BasicBlock *condb = BasicBlock::Create(*theContext, "cond", theFun);
-  // begin
+  
+  BasicBlock *condb = BasicBlock::Create(*theContext, "whcond", theFun);
+  builder->CreateBr(condb);
 
+  BasicBlock *rundb = BasicBlock::Create(*theContext, "whrun");
+  BasicBlock *after = BasicBlock::Create(*theContext, "whafter");
+  
+  builder->SetInsertPoint(condb);
+  builder->CreateCondBr(exp.codegen(),rundb,after);
+
+
+  theFun->getBasicBlockList().push_back(rundb);
+  builder->SetInsertPoint(rundb);  
+  stmt.codegen();
+  builder->CreateBr(condb);
+
+  theFun->getBasicBlockList().push_back(after);
+  builder->SetInsertPoint(after);  
+
+  // begin
   return nullptr;
   // end
 }
+
+
+
 Value *NBreakStmt::codegen() {
   // begin
 
@@ -1016,6 +1140,7 @@ Value *NBreakStmt::codegen() {
 
 
 
+//全局变量
 Value *NExtDefVarDec::codegen() {
   // begin
   // Type *t = 
@@ -1032,28 +1157,40 @@ Value *NExtDefFunDec::codegen() {
   #endif
   
   Function *f = fundec->funcodegen(retType);
+  
   if (!f) {
     return nullptr;
   }
+  
   assert(compst != nullptr); // Assert compst is not null.
+  
   BasicBlock *bb = BasicBlock::Create(*theContext, "entry", f);
+  
   builder->SetInsertPoint(bb);
-  namedValues.clear();
+  
+  namedValues.clear();  //只请空了这个，变量的分类
+  curNamedValues.clear();
+  mp.clear();
   for (auto &arg : f->args()) {
+    
     // Create an alloca for this variable.
     AllocaInst *alloca =
         CreateEntryBlockAlloca(f, arg.getName(), arg.getType());
 
+    //函数参数的检验 才发现这里有 
     if (curNamedValues[std::string(arg.getName())]) {
       printSemanticError(3, line, "Redefined " + arg.getName().str());
       return LogErrorV("Unknown function referenced");
     }
+
     // Store the initial value into the alloca.
     builder->CreateStore(&arg, alloca);
+    
     // Add arguments to variable symbol table.
     namedValues[std::string(arg.getName())] = alloca;
     curNamedValues[std::string(arg.getName())] = alloca;
   }
+
   if (Value *retVal = compst->codegen()) {
     // Finish off the function.
 

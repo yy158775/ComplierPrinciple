@@ -421,8 +421,9 @@ public:
 class NExtDef : public Node {
 public:
   NSpecifier &specifier;
-  NExtDecList *nextdeclist = nullptr;
-  NFunDec *fundec = nullptr;
+  NExtDecList *nextdeclist = nullptr; //int a,b,c;
+  
+  NFunDec *fundec = nullptr; // Id ,argument
   NCompSt *compst = nullptr;
   NExtDef(NSpecifier &specifier) : specifier(specifier) {}
   NExtDef(NSpecifier &specifier, NExtDecList *nextdeclist)
