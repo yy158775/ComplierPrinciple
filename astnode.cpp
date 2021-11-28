@@ -612,14 +612,18 @@ Value *NChar::codegen() {
 
 
 std::map<std::string,AllocaInst*>mp;
+int deepth = 0; //层数
 
 //不确定
 Value *NIdentifier::codegen() {
   // begin
-  if(mp[name] != 0) {
-      return builder->CreateLoad(mp[name]->getAllocatedType(),mp[name]);
-  } else if(namedValues[name] != 0) {
-    return builder->CreateLoad(namedValues[name]->getAllocatedType(),namedValues[name]);
+  
+  std::string name_depth = name + std::to_string(deepth);
+  
+  if(mp[name_depth] != 0) {
+      return builder->CreateLoad(mp[name_depth]->getAllocatedType(),mp[name_depth]);
+  } else if(namedValues[name_depth] != 0) {
+    return builder->CreateLoad(namedValues[name_depth]->getAllocatedType(),namedValues[name_depth]);
   }
   else {
     printSemanticError(1,line);
@@ -791,11 +795,17 @@ Value *NAssignment::codegen() {
     printSemanticError(5,line);
     exit(0);
   } else {
-    if(mp[lhs.name] != nullptr)
-      return builder->CreateStore(rv,mp[lhs.name]);
-    else if(curNamedValues[lhs.name] != nullptr){
-      return builder->CreateStore(rv,curNamedValues[lhs.name]);
+
+    if(mp[lhs.name + std::to_string(deepth)] != nullptr)
+      return builder->CreateStore(rv,mp[lhs.name + std::to_string(deepth)]);
+    else if(curNamedValues[lhs.name + std::to_string(deepth)] != nullptr){
+      return builder->CreateStore(rv,curNamedValues[lhs.name + std::to_string(deepth)]);
+    } else if(mp[lhs.name + std::to_string(1)] != nullptr) {
+      return builder->CreateStore(rv,mp[lhs.name + std::to_string(deepth)]);
+    } else if{
+      return builder->CreateStore(rv,mp[lhs.name + std::to_string(deepth)]);
     }
+
   }
   return nullptr;
   // rhs.
@@ -926,20 +936,20 @@ Value *NDef::codegen() {
       NDecList *d = nDecList;
       for(;d != nullptr;d = d->nDecList) {
           
-          if(mp[d->dec.vardec.Id.name] != nullptr) {
+          if(mp[d->dec.vardec.Id.name + std::to_string(deepth)] != nullptr) {
               printSemanticError(3,line);
               exit(0);
           }
           
           // 但是还要赋值怎么办  ？
-          AllocaInst *alloca_tmp = builder->CreateAlloca(s,nullptr,d->dec.vardec.Id.name);
+          AllocaInst *alloca_tmp = builder->CreateAlloca(s,nullptr,d->dec.vardec.Id.name + std::to_string(deepth));
 
           if(d->dec.exp != nullptr) {
               Value *v = d->dec.exp->codegen();
               builder->CreateStore(v,alloca_tmp);
           } 
 
-          mp[d->dec.vardec.Id.name] = alloca_tmp; //创建的变量 保存起来
+          mp[d->dec.vardec.Id.name + std::to_string(deepth)] = alloca_tmp; //创建的变量 保存起来
 
           #ifdef debug
           std::cout<<"line: "<<__LINE__<<" file: "<<__FUNCTION__<<std::endl;
@@ -972,6 +982,7 @@ Value *NDefList::codegen() {
 }
 
 
+
 Value *NStmtList::codegen() {
   auto *retVal = nStmt.codegen();
   if (nStmtList)
@@ -980,9 +991,12 @@ Value *NStmtList::codegen() {
 }
 
 
+
+
 Value *NCompSt::codegen() {
   // 自行处理变量作用域的问题
-  
+  deepth++;
+
   #ifdef debug
   std::cout<<"line: "<<__LINE__<<" file: "<<__FUNCTION__<<std::endl;
   #endif
@@ -997,7 +1011,10 @@ Value *NCompSt::codegen() {
   
   if (nstmtlist)
     retVal = nstmtlist->codegen();
+  
+  deepth--;
   return retVal;
+
 }
 
 
@@ -1009,8 +1026,7 @@ Value *NExpStmt::codegen()
 
 Value *NCompStStmt::codegen() {
   // begin
-  compst.codegen();
-  return  nullptr;
+ return compst.codegen();
   // end
 }
 
@@ -1042,14 +1058,6 @@ Value *NRetutnStmt::codegen() {
   return retVal;
 }
 
-/*
-if() {
-
-} else {
-
-}
- 
-*/
 
 //返回的值到底是什么
 Value *NIfStmt::codegen() {
@@ -1064,10 +1072,13 @@ Value *NIfStmt::codegen() {
   builder->SetInsertPoint(thenb);
   if(stmt.codegen() == nullptr) {
     builder->CreateBr(ifnotb);
+  } else {
+     
+     #ifdef debug
+     std::cout<<"don't create br\n"; 
+     #endif
   }
-  
   //跳转
-
   //插入之前
   theFun->getBasicBlockList().push_back(ifnotb);
   builder->SetInsertPoint(ifnotb);
@@ -1086,14 +1097,16 @@ Value *NIfElseStmt::codegen() {
   builder->CreateCondBr(exp.codegen(),thenb,ifnotb);
 
   builder->SetInsertPoint(thenb);
-  stmt.codegen();
-  builder->CreateBr(after);
+  if(stmt.codegen() == nullptr) {
+    builder->CreateBr(after);
+  }
 
   //插入之前
   theFun->getBasicBlockList().push_back(ifnotb);
   builder->SetInsertPoint(ifnotb);
-  stmt_else.codegen();
-  builder->CreateBr(after);
+  if(stmt_else.codegen() == nullptr) {
+    builder->CreateBr(after);
+  }
 
   //after
   theFun->getBasicBlockList().push_back(after);
@@ -1118,8 +1131,9 @@ Value *NWhileStmt::codegen() {
 
   theFun->getBasicBlockList().push_back(rundb);
   builder->SetInsertPoint(rundb);  
-  stmt.codegen();
-  builder->CreateBr(condb);
+  if(stmt.codegen() == nullptr) {
+     builder->CreateBr(condb);
+  }
 
   theFun->getBasicBlockList().push_back(after);
   builder->SetInsertPoint(after);  
