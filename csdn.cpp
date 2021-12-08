@@ -109,6 +109,7 @@ Value *ExprIfAST::Codegen() {
 
     Builder.SetInsertPoint(MergeBB);
 
+     
      //分支语句：需要phi merge节点
     PHINode *PN =
     Builder.CreatePHI(Type::getInt32Ty(MyGlobalContext), 2, "iftmp");

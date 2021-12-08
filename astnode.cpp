@@ -1,6 +1,7 @@
 #include "astnode.h"
 #include<map>
 #include<string>
+#include<list>
 
 extern int spaces;
 extern std::unique_ptr<LLVMContext> theContext;
@@ -12,6 +13,39 @@ extern int grammererror;
 extern std::map<std::string, AllocaInst *> curNamedValues;
 
 extern BasicBlock *continueBasicBlock;
+
+// #define debug
+
+
+struct Var {
+  std::string vName;
+  AllocaInst *alloc;
+};
+std::list<Var*>vars;
+
+Var* search(std::string varName) {
+    std::list<Var*>::iterator it = vars.begin();
+    for(;it != vars.end();it++) {
+      if((*it)->vName == varName) {
+        return *it;
+      }
+    }
+    return NULL;
+}
+
+Var* searchInComp(std::string varName) {
+    std::list<Var*>::iterator it = vars.begin();
+    for(;it != vars.end();it++) {
+      if((*it)->vName == varName) {
+        return *it;
+      }
+      if((*it)->vName == "") {
+        return NULL;
+      }
+    }
+    return NULL;
+}
+
 void printspaces() {
   for (int i = 0; i < spaces; ++i)
     std::cout << " ";
@@ -611,26 +645,19 @@ Value *NChar::codegen() {
 }
 
 
-std::map<std::string,AllocaInst*>mp;
-int deepth = 0; //层数
+// std::map<std::string,AllocaInst*>mp;
+// int deepth = 0; //层数
 
 //不确定
 Value *NIdentifier::codegen() {
   // begin
-  
-  std::string name_depth = name ;
-  
-  if(mp[name_depth] != 0) {
-      return builder->CreateLoad(mp[name_depth]->getAllocatedType(),mp[name_depth]);
-  } else if(namedValues[name_depth] != 0) {
-    return builder->CreateLoad(namedValues[name_depth]->getAllocatedType(),namedValues[name_depth]);
-  }
-  else {
+  Var *var = search(name);
+  if(var != nullptr) {
+     return builder->CreateLoad(var->alloc->getAllocatedType(),var->alloc); 
+  } else {
     printSemanticError(1,line);
     exit(0);
   }
-  // return ConstantDataArray::getString(*theContext,name,true);
-  // end
 }
 
 
@@ -762,9 +789,9 @@ Value *NBinaryOperator::codegen() {
     } else if(relop == ">=") {
         return builder->CreateICmpSGE(l,r);
     }
-  case 280:  //
+  case 280:  
       return builder->CreateAnd(l,r);
-  case 281:  //
+  case 281:  
       return builder->CreateOr(l,r);
   case 274:
       return builder->CreateAdd(l,r);
@@ -785,44 +812,26 @@ Value *NBinaryOperator::codegen() {
 Value *NAssignment::codegen() {
   // Assignment requires the LHS to be an identifier.
   // begin
-  Value* lv,*rv;
-  lv = lhs.codegen(); //起始多了一个指令
-  rv = rhs.codegen();
+  Var *var;
+  Value *lv,*rv;
+  rv = rhs.codegen(); //已经加载出来的
+  
   if (lhs.name == "") {
-    printSemanticError(6,line);
-    exit(0);
-  } else if(lv->getType() != rv->getType()) {
-    printSemanticError(5,line);
+    printSemanticError(6,line); //右值
     exit(0);
   } else {
-
-    if(mp[lhs.name ] != nullptr)
-      return builder->CreateStore(rv,mp[lhs.name ]);
-    else if(curNamedValues[lhs.name ] != nullptr){
-      return builder->CreateStore(rv,curNamedValues[lhs.name ]);
-    } 
+    var = search(lhs.name);
+    if(var == nullptr) {
+      printSemanticError(1,line);  //未定义
+      exit(0);
+    }
+    if(var->alloc->getAllocatedType() != rv->getType()) {
+      printSemanticError(5,line);
+      exit(0);
+    }
   }
-  return nullptr;
-  // rhs.
-  // if(mp[lv] != nullptr)
-  // {
-  //   if(rv->getType() != mp[lv]->getAllocatedType()) {
-  //     printSemanticError(5,line);
-  //     exit(0);
-  //   } 
-  //   builder->CreateStore(rv,mp[lv]);
-  // }  
-  // else 
-  // {
-  //   if(lhs.name != "") {
-  //     printSemanticError(1,line);
-  //     exit(0);
-  //   } else {
-  //     printSemanticError(6,line);
-  //     exit(0);
-  //   }
-  // }
-  // end
+
+  return builder->CreateStore(rv,var->alloc);
 }
 
 
@@ -867,6 +876,7 @@ std::pair<std::string, Type *> NParamDec::getType() {
   return tmp;
 }
 
+
 //函数形参组
 Value *NVarList::codegen() {
   assert(false); // Never use this function.
@@ -881,6 +891,7 @@ Function *NFunDec::funcodegen(Type *retType) {
   #ifdef debug
   std::cout<<"line: "<<__LINE__<<" file: "<<__FUNCTION__<<std::endl;
   #endif
+
 
   if (theModule->getFunction(Id.name)) {
     printSemanticError(4, line, "Redefined " + Id.name);
@@ -919,22 +930,22 @@ Function *NFunDec::funcodegen(Type *retType) {
 
 
 
+
 Value *NDef::codegen() {
   // begin
   Type *s = nSpecifier.getType();
-  // builder->CreateAlloca
   #ifdef debug
-  std::cout<<"line: "<<__LINE__<<" file: "<<__FUNCTION__<<std::endl;
+    std::cout<<"line: "<<__LINE__<<" file: "<<__FUNCTION__<<std::endl;
   #endif
   
   if(nDecList != nullptr) {
       NDecList *d = nDecList;
       for(;d != nullptr;d = d->nDecList) {
           
-          // if(mp[d->dec.vardec.Id.name ] != nullptr) {
-          //     printSemanticError(3,line);
-          //     exit(0);
-          // }
+          if(searchInComp(d->dec.vardec.Id.name) != nullptr) {
+              printSemanticError(3,line);
+              exit(0);
+          }
           
           // 但是还要赋值怎么办  ？
           AllocaInst *alloca_tmp = builder->CreateAlloca(s,nullptr,d->dec.vardec.Id.name );
@@ -943,13 +954,14 @@ Value *NDef::codegen() {
               Value *v = d->dec.exp->codegen();
               builder->CreateStore(v,alloca_tmp);
           } 
-
-          mp[d->dec.vardec.Id.name ] = alloca_tmp; //创建的变量 保存起来
-
+          // Var *var = (Var*)malloc(sizeof(Var));
+          Var *var = new Var;
+          var->vName = d->dec.vardec.Id.name;
+          var->alloc = alloca_tmp;
+          vars.push_front(var);
           #ifdef debug
           std::cout<<"line: "<<__LINE__<<" file: "<<__FUNCTION__<<std::endl;
           #endif
-
       } 
       
   } 
@@ -986,18 +998,17 @@ Value *NStmtList::codegen() {
 }
 
 
-
-
-// std::unordered_set<std::string>st; //当前
-
 Value *NCompSt::codegen() {
-  // 自行处理变量作用域的问题
-  deepth++;
-  
-  std::map<std::string,AllocaInst*> back_mp;
-  back_mp = mp;
-  
-  
+  // 自行处理变量作用域的问题  
+  // Var *var = (Var *)malloc(sizeof(Var));
+  Var *var = new Var;
+  if(var == nullptr) {
+      printf("malloc error\n");
+      exit(0);
+  }
+  var->alloc = nullptr;
+  vars.push_front(var);
+
   #ifdef debug
   std::cout<<"line: "<<__LINE__<<" file: "<<__FUNCTION__<<std::endl;
   #endif
@@ -1013,11 +1024,18 @@ Value *NCompSt::codegen() {
   if (nstmtlist)
     retVal = nstmtlist->codegen();
   
-  deepth--;
-
-  mp = back_mp;
+  for(std::list<Var*>::iterator it = vars.begin();it != vars.end();) {
+    Var *var_tmp = *it;
+    std::string tname = var_tmp->vName;
+    it++;
+    vars.pop_front();
+    if(tname == "") {
+      break;
+    }
+    // free(var_tmp);
+    delete var_tmp;
+  }
   return retVal;
-
 }
 
 
@@ -1187,7 +1205,21 @@ Value *NExtDefFunDec::codegen() {
   
   namedValues.clear();  //只请空了这个，变量的分类
   curNamedValues.clear();
-  mp.clear();
+  
+  // vars.clear();
+  //有必要吗？？
+  for(std::list<Var*>::iterator it = vars.begin();it != vars.end();) {
+    Var *var_tmp = *it;
+    std::string tname = var_tmp->vName;
+    it++;
+    vars.pop_front();
+    // free(var_tmp);
+    delete var_tmp;
+    if(tname == "") {
+      break;
+    }
+  }
+
   for (auto &arg : f->args()) {
     
     // Create an alloca for this variable.
@@ -1206,6 +1238,12 @@ Value *NExtDefFunDec::codegen() {
     // Add arguments to variable symbol table.
     namedValues[std::string(arg.getName())] = alloca;
     curNamedValues[std::string(arg.getName())] = alloca;
+    
+    // Var *var = (Var *)malloc(sizeof(Var));
+    Var *var = new Var;
+    var->vName = std::string(arg.getName());
+    var->alloc = alloca;
+    vars.push_front(var);
   }
 
   if (Value *retVal = compst->codegen()) {

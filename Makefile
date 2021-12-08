@@ -16,7 +16,7 @@ token.cpp: token.l parser.hpp
 	flex -o $@ token.l
 
 %.o: %.cpp
-	g++  -o $@ $< $(LLVM_CXXFLAGS)  -c 
+	g++  -o $@ $< $(LLVM_CXXFLAGS)  -c -g
 
 minic: $(OBJS)
 	g++ -o $@ $(OBJS) $(LLVM_CXXFLAGS) 
